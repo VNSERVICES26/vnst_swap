@@ -10,45 +10,98 @@ const swapContractABI = [{"inputs":[{"internalType":"address","name":"_vnstToken
 let vnstToken;
 let swapContract;
 
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("tokenAddress").value = vnstTokenAddress;
+});
+
 async function connectWallet() {
-    if (window.ethereum) {
-        web3 = new Web3(window.ethereum);
-        await window.ethereum.enable();
-        const accounts = await web3.eth.getAccounts();
-        account = accounts[0];
-        document.getElementById("status").innerText = `Connected: ${account}`;
-        vnstToken = new web3.eth.Contract(vnstTokenABI, vnstTokenAddress);
-        swapContract = new web3.eth.Contract(swapContractABI, swapContractAddress);
-    } else {
-        alert("Please install MetaMask");
-    }
-}
+  if (window.ethereum) {
+    web3 = new Web3(window.ethereum);
+    await window.ethereum.enable();
+    const accounts = await web3.eth.getAccounts();
+    account = accounts[0];
+    document.getElementById("status").innerText = `Connected: ${account}`;
 
-async function approveUSDT() {
-    const amount = await getQuote();
-    const usdtAddress = await swapContract.methods.usdtToken().call();
-    const usdtAbi = [ { "constant": false, "inputs": [...], "name": "approve", "outputs": [...], "type": "function" } ];
-    const usdt = new web3.eth.Contract(usdtAbi, usdtAddress);
-
-    await usdt.methods.approve(swapContractAddress, amount).send({ from: account });
-    document.getElementById("status").innerText = "USDT approved!";
+    vnstToken = new web3.eth.Contract(vnstTokenABI, vnstTokenAddress);
+    swapContract = new web3.eth.Contract(swapContractABI, swapContractAddress);
+  } else {
+    alert("Please install MetaMask!");
+  }
 }
 
 async function getQuote() {
-    const vnstAmount = document.getElementById("vnstAmount").value;
-    const quote = await swapContract.methods.getQuote(web3.utils.toWei(vnstAmount, 'ether')).call();
-    document.getElementById("quote").innerText = `USDT Required: ${web3.utils.fromWei(quote, 'ether')}`;
-    return quote;
+  const vnstAmount = document.getElementById("vnstAmount").value;
+  if (!vnstAmount || isNaN(vnstAmount) || parseFloat(vnstAmount) <= 0) {
+    alert("Please enter a valid VNST amount.");
+    return;
+  }
+
+  const weiAmount = web3.utils.toWei(vnstAmount, 'ether');
+  const quote = await swapContract.methods.getQuote(weiAmount).call();
+  const usdtRequired = web3.utils.fromWei(quote, 'ether');
+  document.getElementById("usdtQuote").innerText = `USDT Required: ${usdtRequired}`;
+  return quote;
+}
+
+async function approveUSDT() {
+  if (!web3 || !account) {
+    alert("Please connect your wallet first.");
+    return;
+  }
+
+  const quote = await getQuote();
+  if (!quote) return;
+
+  const usdtAddress = await swapContract.methods.usdtToken().call();
+  const usdtAbi = [{
+    "constant": false,
+    "inputs": [
+      { "name": "_spender", "type": "address" },
+      { "name": "_value", "type": "uint256" }
+    ],
+    "name": "approve",
+    "outputs": [{ "name": "", "type": "bool" }],
+    "type": "function"
+  }];
+
+  const usdt = new web3.eth.Contract(usdtAbi, usdtAddress);
+
+  try {
+    await usdt.methods.approve(swapContractAddress, quote).send({ from: account });
+    document.getElementById("status").innerText = "USDT approved!";
+  } catch (error) {
+    console.error(error);
+    document.getElementById("status").innerText = "Approval failed.";
+  }
 }
 
 async function buyVNST() {
-    const vnstAmount = document.getElementById("vnstAmount").value;
-    await swapContract.methods.buyVNST(web3.utils.toWei(vnstAmount, 'ether')).send({ from: account });
-    document.getElementById("status").innerText = "VNST purchased!";
+  if (!web3 || !account) {
+    alert("Please connect your wallet first.");
+    return;
+  }
+
+  const vnstAmount = document.getElementById("vnstAmount").value;
+  if (!vnstAmount || isNaN(vnstAmount) || parseFloat(vnstAmount) <= 0) {
+    alert("Please enter a valid VNST amount.");
+    return;
+  }
+
+  const weiAmount = web3.utils.toWei(vnstAmount, 'ether');
+
+  try {
+    await swapContract.methods.buyVNST(weiAmount).send({ from: account });
+    document.getElementById("status").innerText = "VNST purchased successfully!";
+  } catch (error) {
+    console.error(error);
+    document.getElementById("status").innerText = "Purchase failed.";
+  }
 }
 
 function copyAddress() {
-    const copyText = document.getElementById("tokenAddress").innerText;
-    navigator.clipboard.writeText(copyText);
-    alert("Copied: " + copyText);
+  const copyText = document.getElementById("tokenAddress");
+  copyText.select();
+  copyText.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(copyText.value);
+  alert("Copied: " + copyText.value);
 }
